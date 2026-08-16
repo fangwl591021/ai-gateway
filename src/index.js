@@ -3,6 +3,7 @@ import { runProvider } from "./providers/index.js";
 import { calculateBillable, calculateProviderCost } from "./billing.js";
 import { getTenantAsset, storeGeneratedImages } from "./assets.js";
 import { handleAdmin } from "./admin.js";
+import { handleCommercialAdmin } from "./admin-commercial.js";
 import { adminConsoleHtml } from "./admin-ui.js";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
@@ -42,10 +43,10 @@ async function handleRun(request,env,ctx){
 
 export default {async fetch(request,env,ctx){try{const url=new URL(request.url);
   if(request.method==="GET"&&url.pathname==="/console")return new Response(adminConsoleHtml(),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"}});
-  if(url.pathname.startsWith("/admin/"))return await handleAdmin(request,env,url);
-  if(request.method==="GET"&&url.pathname==="/health")return json({ok:true,service:"ai-gateway",version:"0.3.1",environment:env.ENVIRONMENT||"unknown",d1_configured:Boolean(env.DB),r2_configured:Boolean(env.ASSETS),openai_configured:Boolean(env.OPENAI_API_KEY),qwen_cn_configured:Boolean(env.QWEN_CN_API_KEY&&env.QWEN_CN_WORKSPACE_ID),qwen_intl_configured:Boolean(env.QWEN_INTL_API_KEY&&env.QWEN_INTL_WORKSPACE_ID),admin_configured:Boolean(env.ADMIN_API_KEY),timestamp:new Date().toISOString()});
+  if(url.pathname.startsWith("/admin/")){const commercial=await handleCommercialAdmin(request,env,url);if(commercial)return commercial;return await handleAdmin(request,env,url);}
+  if(request.method==="GET"&&url.pathname==="/health")return json({ok:true,service:"ai-gateway",version:"0.3.2",environment:env.ENVIRONMENT||"unknown",d1_configured:Boolean(env.DB),r2_configured:Boolean(env.ASSETS),openai_configured:Boolean(env.OPENAI_API_KEY),qwen_cn_configured:Boolean(env.QWEN_CN_API_KEY&&env.QWEN_CN_WORKSPACE_ID),qwen_intl_configured:Boolean(env.QWEN_INTL_API_KEY&&env.QWEN_INTL_WORKSPACE_ID),admin_configured:Boolean(env.ADMIN_API_KEY),timestamp:new Date().toISOString()});
   if(request.method==="POST"&&url.pathname==="/v1/run")return await handleRun(request,env,ctx);
   if(request.method==="GET"&&url.pathname.startsWith("/v1/assets/")){const key=decodeURIComponent(url.pathname.slice("/v1/assets/".length));if(!key)return json({error:"asset_key_required"},400);return await handleAssetGet(request,env,key);}
-  if(request.method==="GET"&&url.pathname==="/")return json({service:"AI Gateway",status:"online",version:"0.3.1",console:"/console",endpoints:["GET /health","POST /v1/run","GET /v1/assets/:key","GET /admin/dashboard","POST /admin/tenants","POST /admin/tenants/:id/keys","GET /admin/invoices"]});
+  if(request.method==="GET"&&url.pathname==="/")return json({service:"AI Gateway",status:"online",version:"0.3.2",console:"/console",endpoints:["GET /health","POST /v1/run","GET /v1/assets/:key","GET /admin/dashboard","POST /admin/tenants","POST /admin/tenants/:id/keys","GET /admin/plans","PUT /admin/tenants/:id/subscription","PUT /admin/tenants/:id/rate-cards","GET /admin/invoices"]});
   return json({error:"not_found"},404);
 }catch(error){const id=requestId(request);console.error(JSON.stringify({event:"unhandled_error",request_id:id,message:error instanceof Error?error.message:String(error)}));return json({error:"internal_error",request_id:id},500);}}};

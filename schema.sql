@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS provider_prices (
   id TEXT PRIMARY KEY,
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
+  region TEXT NOT NULL DEFAULT 'global',
   unit_type TEXT NOT NULL,
   input_price REAL NOT NULL DEFAULT 0,
   output_price REAL NOT NULL DEFAULT 0,
@@ -71,7 +72,7 @@ CREATE TABLE IF NOT EXISTS provider_prices (
 );
 
 CREATE INDEX IF NOT EXISTS idx_provider_prices_lookup
-  ON provider_prices(provider, model, effective_from);
+  ON provider_prices(provider, model, region, effective_from);
 
 CREATE TABLE IF NOT EXISTS tenant_rate_cards (
   id TEXT PRIMARY KEY,

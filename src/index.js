@@ -1,6 +1,7 @@
 import { buildRoute, inferRegion } from "./routing.js";
 import { runProvider } from "./providers/index.js";
 import { calculateBillable, calculateProviderCost } from "./billing.js";
+import { getTenantAsset, storeGeneratedImages } from "./assets.js";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
@@ -82,6 +83,24 @@ async function updateUsage(env, eventId, data) {
   ).run();
 }
 
+function assetDownloadUrl(request, key) {
+  const url = new URL(request.url);
+  return `${url.origin}/v1/assets/${encodeURIComponent(key)}`;
+}
+
+async function handleAssetGet(request, env, key) {
+  const auth = await authenticate(request, env);
+  if (!auth.ok) return auth.response;
+  const object = await getTenantAsset(env, key, auth.principal.tenant_id);
+  if (!object || !object.body) return json({ error: "asset_not_found" }, 404);
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "private, max-age=3600");
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(object.body, { headers });
+}
+
 async function handleRun(request, env, ctx) {
   const id = requestId(request);
   const auth = await authenticate(request, env);
@@ -111,6 +130,27 @@ async function handleRun(request, env, ctx) {
     const attemptStarted = Date.now();
     try {
       const providerResult = await runProvider({ env, region, task, input, ...candidate });
+      let result = providerResult.result;
+      if (candidate.operation === "image.edit" && Array.isArray(providerResult.result?.images)) {
+        const stored = await storeGeneratedImages(env, {
+          tenantId: auth.principal.tenant_id,
+          requestId: id,
+          provider: candidate.provider,
+          images: providerResult.result.images,
+        });
+        if (stored?.length) {
+          result = {
+            images: stored.map((asset) => ({
+              asset_key: asset.key,
+              content_type: asset.content_type,
+              size: asset.size,
+              download_url: assetDownloadUrl(request, asset.key),
+            })),
+            storage: "r2",
+          };
+        }
+      }
+
       const cost = await calculateProviderCost(env, {
         provider: candidate.provider,
         model: candidate.model,
@@ -144,7 +184,7 @@ async function handleRun(request, env, ctx) {
         provider: candidate.provider,
         model: candidate.model,
         provider_request_id: providerResult.providerRequestId || null,
-        result: providerResult.result,
+        result,
         usage: {
           input_units: providerResult.usage?.inputUnits || 0,
           output_units: providerResult.usage?.outputUnits || 0,
@@ -191,17 +231,24 @@ export default {
         return json({
           ok: true,
           service: "ai-gateway",
-          version: "0.2.0",
+          version: "0.2.1",
           environment: env.ENVIRONMENT || "unknown",
           d1_configured: Boolean(env.DB),
+          r2_configured: Boolean(env.ASSETS),
+          openai_configured: Boolean(env.OPENAI_API_KEY),
           qwen_cn_configured: Boolean(env.QWEN_CN_API_KEY && env.QWEN_CN_WORKSPACE_ID),
           qwen_intl_configured: Boolean(env.QWEN_INTL_API_KEY && env.QWEN_INTL_WORKSPACE_ID),
           timestamp: new Date().toISOString(),
         });
       }
       if (request.method === "POST" && url.pathname === "/v1/run") return await handleRun(request, env, ctx);
+      if (request.method === "GET" && url.pathname.startsWith("/v1/assets/")) {
+        const key = decodeURIComponent(url.pathname.slice("/v1/assets/".length));
+        if (!key) return json({ error: "asset_key_required" }, 400);
+        return await handleAssetGet(request, env, key);
+      }
       if (request.method === "GET" && url.pathname === "/") {
-        return json({ service: "AI Gateway", status: "online", version: "0.2.0", endpoints: ["GET /health", "POST /v1/run"] });
+        return json({ service: "AI Gateway", status: "online", version: "0.2.1", endpoints: ["GET /health", "POST /v1/run", "GET /v1/assets/:key"] });
       }
       return json({ error: "not_found" }, 404);
     } catch (error) {

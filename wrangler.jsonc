@@ -10,5 +10,11 @@
   },
   "vars": {
     "ENVIRONMENT": "production"
-  }
+  },
+  "r2_buckets": [
+    {
+      "binding": "ASSETS",
+      "bucket_name": "ai-gateway-assets"
+    }
+  ]
 }

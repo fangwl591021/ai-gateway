@@ -65,7 +65,15 @@ async function callImageEdit({ env, task, model, input }) {
   return {
     result: { images },
     providerRequestId: body?.id || null,
-    usage: { inputUnits: 0, outputUnits: 0, imageCount: images.length },
+    usage: {
+      inputUnits: body?.usage?.input_tokens || 0,
+      outputUnits: body?.usage?.output_tokens || 0,
+      imageCount: images.length,
+      details: {
+        inputImageTokens: body?.usage?.input_tokens_details?.image_tokens || 0,
+        inputTextTokens: body?.usage?.input_tokens_details?.text_tokens || 0,
+      },
+    },
   };
 }
 

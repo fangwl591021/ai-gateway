@@ -19,7 +19,6 @@ export function buildRoute(task, region) {
     if (task === "vision.business_card" || task === "vision.dm") {
       return [
         { provider: "qwen", model: "qwen3-vl-flash", operation: "vision.analyze" },
-        { provider: "qwen", model: "qwen-plus", operation: "text.analyze" },
       ];
     }
     return [
